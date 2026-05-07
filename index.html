@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="./media/icon3.png" type="image/x-icon">
+    <link rel="stylesheet" href="./style.css">
+    <title>Assignment Tracking System Login</title>
+</head>
+<body class="login-page">
+    <main class="login-shell">
+        <section class="login-intro" aria-label="Application summary">
+            <div class="brand-mark">ATS</div>
+            <h1>Assignment Tracking System</h1>
+            <p>Faculty can assign class work, review student submissions, and publish grades. Students can see class assignments, upload PDF/JPG/PNG work, and track feedback.</p>
+        </section>
+
+        <section class="login-panel" aria-label="Login form">
+            <h2>Login First</h2>
+            <p class="muted">Choose your role and sign in to continue.</p>
+
+            <div class="role-selector" role="tablist" aria-label="Login role">
+                <button type="button" class="role-option active" id="studentRole" onclick="selectRole('student')">
+                    <span class="role-icon">S</span>
+                    <span>Student</span>
+                </button>
+                <button type="button" class="role-option" id="facultyRole" onclick="selectRole('faculty')">
+                    <span class="role-icon">F</span>
+                    <span>Faculty</span>
+                </button>
+            </div>
+
+            <div class="error-message" id="errorMessage" role="alert"></div>
+
+            <form id="loginForm" autocomplete="on">
+                <label class="field">
+                    <span>Username or email</span>
+                    <input type="text" id="username" autocomplete="username" placeholder="student" required>
+                </label>
+
+                <label class="field">
+                    <span>Password</span>
+                    <div class="password-row">
+                        <input type="password" id="password" autocomplete="current-password" placeholder="student123" required>
+                        <button type="button" class="icon-button" onclick="togglePassword()" aria-label="Show or hide password">Show</button>
+                    </div>
+                </label>
+
+                <label class="remember-row">
+                    <input type="checkbox" id="rememberMe">
+                    <span>Remember me on this browser</span>
+                </label>
+
+                <button type="submit" class="primary-button">Login</button>
+            </form>
+
+            <div class="demo-box" aria-label="Demo credentials">
+                <strong>Demo logins</strong>
+                <span>Student: <code>student</code> / <code>student123</code></span>
+                <span>Faculty: <code>faculty</code> / <code>faculty123</code></span>
+            </div>
+        </section>
+    </main>
+
+    <script>
+        const USERS = {
+            student: [
+                { username: 'student', email: 'student@college.edu', password: 'student123', name: 'Arjun Mehta', id: 'STU001', className: 'CSE-A' },
+                { username: 'student2', email: 'student2@college.edu', password: 'student123', name: 'Neha Rao', id: 'STU002', className: 'CSE-B' }
+            ],
+            faculty: [
+                { username: 'faculty', email: 'faculty@college.edu', password: 'faculty123', name: 'Dr. Sarah Johnson', id: 'FAC001' }
+            ]
+        };
+
+        let selectedRole = 'student';
+
+        function selectRole(role) {
+            selectedRole = role;
+            document.getElementById('studentRole').classList.toggle('active', role === 'student');
+            document.getElementById('facultyRole').classList.toggle('active', role === 'faculty');
+            document.getElementById('username').placeholder = role === 'student' ? 'student' : 'faculty';
+            document.getElementById('password').placeholder = role === 'student' ? 'student123' : 'faculty123';
+            hideError();
+        }
+
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const button = document.querySelector('.icon-button');
+            const isHidden = passwordInput.type === 'password';
+            passwordInput.type = isHidden ? 'text' : 'password';
+            button.textContent = isHidden ? 'Hide' : 'Show';
+        }
+
+        function showError(message) {
+            const error = document.getElementById('errorMessage');
+            error.textContent = message;
+            error.classList.add('show');
+        }
+
+        function hideError() {
+            const error = document.getElementById('errorMessage');
+            error.textContent = '';
+            error.classList.remove('show');
+        }
+
+        function findUser(role, login, password) {
+            const normalizedLogin = login.trim().toLowerCase();
+            return USERS[role].find(user => {
+                const usernameMatch = user.username.toLowerCase() === normalizedLogin;
+                const emailMatch = user.email.toLowerCase() === normalizedLogin;
+                return (usernameMatch || emailMatch) && user.password === password;
+            });
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', event => {
+            event.preventDefault();
+            const login = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            const user = findUser(selectedRole, login, password);
+
+            if (!user) {
+                showError('Invalid username or password for the selected role.');
+                return;
+            }
+
+            const session = {
+                id: user.id,
+                name: user.name,
+                role: selectedRole,
+                className: user.className || null,
+                signedInAt: new Date().toISOString()
+            };
+
+            const storage = document.getElementById('rememberMe').checked ? localStorage : sessionStorage;
+            storage.setItem('atsCurrentUser', JSON.stringify(session));
+            window.location.href = 'assignment-tracker.html';
+        });
+
+        window.addEventListener('load', () => {
+            const activeSession = sessionStorage.getItem('atsCurrentUser') || localStorage.getItem('atsCurrentUser');
+            if (activeSession) {
+                window.location.href = 'assignment-tracker.html';
+            }
+        });
+    </script>
+</body>
+</html>

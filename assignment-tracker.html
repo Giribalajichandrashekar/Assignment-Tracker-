@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="shortcut icon" href="./media/icon3.png" type="image/x-icon">
+    <link rel="stylesheet" href="./style.css">
+    <title>Assignment Tracker Dashboard</title>
+</head>
+<body class="app-page">
+    <main class="app-shell">
+        <header class="app-header">
+            <div>
+                <h1>Assignment Tracker</h1>
+                <p class="muted" id="roleLine"></p>
+            </div>
+            <div class="session-card">
+                <div class="avatar" id="userInitials"></div>
+                <div>
+                    <strong id="userName"></strong>
+                    <div class="muted" id="userMeta"></div>
+                </div>
+                <button type="button" class="secondary-button" onclick="logout()">Logout</button>
+            </div>
+        </header>
+
+        <section class="dashboard">
+            <div class="stats" id="stats"></div>
+
+            <section class="panel">
+                <div class="panel-head">
+                    <h2 id="panelTitle">Assignments</h2>
+                    <button type="button" class="primary-button" id="createAssignmentButton" onclick="openAssignmentModal()">Assign Work</button>
+                </div>
+
+                <div class="toolbar">
+                    <input type="search" id="searchBox" placeholder="Search assignments, classes, courses">
+                    <select id="statusFilter" aria-label="Filter by status">
+                        <option value="all">All statuses</option>
+                        <option value="pending">Pending</option>
+                        <option value="submitted">Submitted</option>
+                        <option value="late">Late</option>
+                        <option value="graded">Graded</option>
+                    </select>
+                    <select id="classFilter" aria-label="Filter by class">
+                        <option value="all">All classes</option>
+                    </select>
+                </div>
+
+                <div class="table-wrap" id="tableContainer"></div>
+            </section>
+        </section>
+    </main>
+
+    <div class="modal" id="assignmentModal">
+        <div class="modal-content">
+            <h2 class="modal-title">Assign New Class Work</h2>
+            <form id="assignmentForm">
+                <div class="form-grid">
+                    <label class="field">
+                        <span>Assignment title</span>
+                        <input type="text" id="assignmentTitle" required maxlength="80">
+                    </label>
+                    <label class="field">
+                        <span>Course</span>
+                        <input type="text" id="assignmentCourse" required maxlength="40" placeholder="CS 301">
+                    </label>
+                    <label class="field">
+                        <span>Class</span>
+                        <select id="assignmentClass" required>
+                            <option value="CSE-A">CSE-A</option>
+                            <option value="CSE-B">CSE-B</option>
+                            <option value="ECE-A">ECE-A</option>
+                        </select>
+                    </label>
+                    <label class="field">
+                        <span>Due date and time</span>
+                        <input type="datetime-local" id="assignmentDueDate" required>
+                    </label>
+                    <label class="field full">
+                        <span>Description</span>
+                        <textarea id="assignmentDescription" maxlength="600" placeholder="Submission instructions, rubric, or expected format"></textarea>
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="button" class="secondary-button" onclick="closeModal('assignmentModal')">Cancel</button>
+                    <button type="submit" class="primary-button">Assign to Class</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="submitModal">
+        <div class="modal-content">
+            <h2 class="modal-title" id="submitTitle">Submit Assignment</h2>
+            <form id="submitForm">
+                <label class="field">
+                    <span>Upload file</span>
+                    <input type="file" id="submissionFile" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png">
+                    <small class="file-note">Only PDF, JPG, JPEG, and PNG files are accepted.</small>
+                </label>
+                <label class="field">
+                    <span>Student comments</span>
+                    <textarea id="submissionComments" maxlength="500" placeholder="Optional note for faculty"></textarea>
+                </label>
+                <div class="error-message" id="submissionError" role="alert"></div>
+                <div class="form-actions">
+                    <button type="button" class="secondary-button" onclick="closeModal('submitModal')">Cancel</button>
+                    <button type="submit" class="primary-button">Submit Work</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="gradeModal">
+        <div class="modal-content">
+            <h2 class="modal-title" id="gradeTitle">Grade Submission</h2>
+            <form id="gradeForm">
+                <label class="field">
+                    <span>Grade out of 100</span>
+                    <input type="number" id="gradeValue" min="0" max="100" required>
+                </label>
+                <label class="field">
+                    <span>Feedback</span>
+                    <textarea id="gradeFeedback" maxlength="600" placeholder="Feedback visible to the student"></textarea>
+                </label>
+                <div class="form-actions">
+                    <button type="button" class="secondary-button" onclick="closeModal('gradeModal')">Cancel</button>
+                    <button type="submit" class="primary-button">Save Grade</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="detailsModal">
+        <div class="modal-content large" id="detailsContent"></div>
+    </div>
+
+    <script>
+        const STORAGE_KEYS = {
+            user: 'atsCurrentUser',
+            assignments: 'atsAssignments',
+            submissions: 'atsSubmissions'
+        };
+
+        const STUDENTS = [
+            { id: 'STU001', name: 'Arjun Mehta', className: 'CSE-A' },
+            { id: 'STU002', name: 'Neha Rao', className: 'CSE-B' }
+        ];
+
+        const CLASSES = ['CSE-A', 'CSE-B', 'ECE-A'];
+        const allowedExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
+        const allowedTypes = ['application/pdf', 'image/jpeg', 'image/png'];
+
+        let currentUser = null;
+        let assignments = [];
+        let submissions = [];
+        let selectedAssignmentId = null;
+        let selectedSubmissionId = null;
+
+        function getStoredSession() {
+            const raw = sessionStorage.getItem(STORAGE_KEYS.user) || localStorage.getItem(STORAGE_KEYS.user);
+            if (!raw) return null;
+            try {
+                return JSON.parse(raw);
+            } catch (error) {
+                return null;
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem(STORAGE_KEYS.assignments, JSON.stringify(assignments));
+            localStorage.setItem(STORAGE_KEYS.submissions, JSON.stringify(submissions));
+        }
+
+        function loadData() {
+            const savedAssignments = localStorage.getItem(STORAGE_KEYS.assignments);
+            const savedSubmissions = localStorage.getItem(STORAGE_KEYS.submissions);
+
+            assignments = savedAssignments ? JSON.parse(savedAssignments) : [
+                {
+                    id: 'A-1001',
+                    title: 'Database Design Project',
+                    course: 'CS 301',
+                    className: 'CSE-A',
+                    dueDate: '2026-05-30T23:59',
+                    description: 'Design an ER diagram and schema for an online bookstore.',
+                    createdBy: 'FAC001',
+                    createdAt: '2026-05-07T09:00:00.000Z'
+                },
+                {
+                    id: 'A-1002',
+                    title: 'Algorithm Analysis Report',
+                    course: 'CS 401',
+                    className: 'CSE-B',
+                    dueDate: '2026-06-03T17:00',
+                    description: 'Compare two sorting algorithms with time complexity notes.',
+                    createdBy: 'FAC001',
+                    createdAt: '2026-05-07T09:30:00.000Z'
+                }
+            ];
+
+            submissions = savedSubmissions ? JSON.parse(savedSubmissions) : [];
+            saveData();
+        }
+
+        function requireLogin() {
+            currentUser = getStoredSession();
+            if (!currentUser) {
+                window.location.href = 'index.html';
+                return false;
+            }
+            return true;
+        }
+
+        function logout() {
+            sessionStorage.removeItem(STORAGE_KEYS.user);
+            localStorage.removeItem(STORAGE_KEYS.user);
+            window.location.href = 'index.html';
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, char => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#039;'
+            }[char]));
+        }
+
+        function formatDate(value) {
+            if (!value) return '-';
+            return new Date(value).toLocaleString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+
+        function generateId(prefix) {
+            return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 7)}`;
+        }
+
+        function getInitials(name) {
+            return name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
+        }
+
+        function getStudentSubmission(assignmentId, studentId = currentUser.id) {
+            return submissions.find(item => item.assignmentId === assignmentId && item.studentId === studentId) || null;
+        }
+
+        function getStudentStatus(assignment) {
+            const submission = getStudentSubmission(assignment.id);
+            if (!submission) return new Date() > new Date(assignment.dueDate) ? 'late' : 'pending';
+            return submission.grade !== null && submission.grade !== undefined ? 'graded' : submission.status;
+        }
+
+        function getFacultyStatus(assignment) {
+            const classStudents = STUDENTS.filter(student => student.className === assignment.className);
+            const classSubmissions = submissions.filter(item => item.assignmentId === assignment.id);
+            if (!classSubmissions.length) return new Date() > new Date(assignment.dueDate) ? 'late' : 'pending';
+            const graded = classSubmissions.filter(item => item.grade !== null && item.grade !== undefined).length;
+            if (graded === classStudents.length && classStudents.length > 0) return 'graded';
+            return classSubmissions.some(item => item.status === 'late') ? 'late' : 'submitted';
+        }
+
+        function badge(status) {
+            const label = status.charAt(0).toUpperCase() + status.slice(1);
+            return `<span class="badge ${status}">${label}</span>`;
+        }
+
+        function getVisibleAssignments() {
+            const search = document.getElementById('searchBox').value.trim().toLowerCase();
+            const statusFilter = document.getElementById('statusFilter').value;
+            const classFilter = document.getElementById('classFilter').value;
+
+            return assignments.filter(assignment => {
+                const roleMatch = currentUser.role === 'faculty' || assignment.className === currentUser.className;
+                const status = currentUser.role === 'faculty' ? getFacultyStatus(assignment) : getStudentStatus(assignment);
+                const searchHaystack = `${assignment.title} ${assignment.course} ${assignment.className} ${assignment.description}`.toLowerCase();
+                const searchMatch = !search || searchHaystack.includes(search);
+                const statusMatch = statusFilter === 'all' || status === statusFilter;
+                const classMatch = classFilter === 'all' || assignment.className === classFilter;
+                return roleMatch && searchMatch && statusMatch && classMatch;
+            }).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+        }
+
+        function renderHeader() {
+            document.getElementById('userInitials').textContent = getInitials(currentUser.name);
+            document.getElementById('userName').textContent = currentUser.name;
+            document.getElementById('userMeta').textContent = currentUser.role === 'student'
+                ? `${currentUser.id} | ${currentUser.className}`
+                : `${currentUser.id} | Faculty`;
+            document.getElementById('roleLine').textContent = currentUser.role === 'student'
+                ? 'Student dashboard: view class assignments, submit files, and check grades.'
+                : 'Faculty dashboard: assign work to classes, review submissions, and grade students.';
+            document.getElementById('panelTitle').textContent = currentUser.role === 'student'
+                ? 'My Class Assignments'
+                : 'Faculty Assignment Board';
+            document.getElementById('createAssignmentButton').style.display = currentUser.role === 'faculty' ? 'inline-block' : 'none';
+            document.getElementById('classFilter').style.display = currentUser.role === 'faculty' ? 'block' : 'none';
+        }
+
+        function populateClassFilter() {
+            const classFilter = document.getElementById('classFilter');
+            classFilter.innerHTML = '<option value="all">All classes</option>';
+            CLASSES.forEach(className => {
+                classFilter.insertAdjacentHTML('beforeend', `<option value="${className}">${className}</option>`);
+            });
+        }
+
+        function renderStats() {
+            const visible = currentUser.role === 'student'
+                ? assignments.filter(item => item.className === currentUser.className)
+                : assignments;
+
+            if (currentUser.role === 'student') {
+                const statuses = visible.map(getStudentStatus);
+                document.getElementById('stats').innerHTML = `
+                    <div class="stat-card"><strong>${visible.length}</strong><span>Total assigned</span></div>
+                    <div class="stat-card"><strong>${statuses.filter(status => status === 'pending').length}</strong><span>Pending</span></div>
+                    <div class="stat-card"><strong>${statuses.filter(status => status === 'submitted' || status === 'late').length}</strong><span>Submitted</span></div>
+                    <div class="stat-card"><strong>${statuses.filter(status => status === 'graded').length}</strong><span>Graded</span></div>
+                `;
+                return;
+            }
+
+            const totalSubmissions = submissions.length;
+            const gradedSubmissions = submissions.filter(item => item.grade !== null && item.grade !== undefined).length;
+            const grades = submissions.filter(item => item.grade !== null && item.grade !== undefined).map(item => Number(item.grade));
+            const averageGrade = grades.length ? Math.round(grades.reduce((sum, grade) => sum + grade, 0) / grades.length) : 0;
+            document.getElementById('stats').innerHTML = `
+                <div class="stat-card"><strong>${assignments.length}</strong><span>Assignments</span></div>
+                <div class="stat-card"><strong>${totalSubmissions}</strong><span>Submissions</span></div>
+                <div class="stat-card"><strong>${gradedSubmissions}</strong><span>Graded</span></div>
+                <div class="stat-card"><strong>${averageGrade}%</strong><span>Average grade</span></div>
+            `;
+        }
+
+        function renderStudentTable(rows) {
+            if (!rows.length) {
+                return `<div class="empty-state"><h3>No assignments found</h3><p>Your class assignments will appear here when faculty assigns them.</p></div>`;
+            }
+
+            return `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Assignment</th>
+                            <th>Course</th>
+                            <th>Class</th>
+                            <th>Due date</th>
+                            <th>Status</th>
+                            <th>Grade</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(assignment => {
+                            const submission = getStudentSubmission(assignment.id);
+                            const status = getStudentStatus(assignment);
+                            const grade = submission && submission.grade !== null && submission.grade !== undefined ? `${submission.grade}%` : '-';
+                            return `
+                                <tr>
+                                    <td><strong>${escapeHtml(assignment.title)}</strong><p>${escapeHtml(assignment.description || 'No description')}</p></td>
+                                    <td>${escapeHtml(assignment.course)}</td>
+                                    <td>${escapeHtml(assignment.className)}</td>
+                                    <td>${formatDate(assignment.dueDate)}</td>
+                                    <td>${badge(status)}</td>
+                                    <td><strong>${grade}</strong></td>
+                                    <td>
+                                        <div class="actions">
+                                            <button type="button" class="primary-button" onclick="openSubmitModal('${assignment.id}')">${submission ? 'Resubmit' : 'Submit'}</button>
+                                            <button type="button" class="secondary-button" onclick="openDetails('${assignment.id}')">View</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function renderFacultyTable(rows) {
+            if (!rows.length) {
+                return `<div class="empty-state"><h3>No assignments found</h3><p>Create an assignment for a class to start tracking submissions.</p></div>`;
+            }
+
+            return `
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Assignment</th>
+                            <th>Course</th>
+                            <th>Class</th>
+                            <th>Due date</th>
+                            <th>Submitted</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(assignment => {
+                            const classStudents = STUDENTS.filter(student => student.className === assignment.className);
+                            const submittedCount = submissions.filter(item => item.assignmentId === assignment.id).length;
+                            return `
+                                <tr>
+                                    <td><strong>${escapeHtml(assignment.title)}</strong><p>${escapeHtml(assignment.description || 'No description')}</p></td>
+                                    <td>${escapeHtml(assignment.course)}</td>
+                                    <td>${escapeHtml(assignment.className)}</td>
+                                    <td>${formatDate(assignment.dueDate)}</td>
+                                    <td>${submittedCount}/${classStudents.length}</td>
+                                    <td>${badge(getFacultyStatus(assignment))}</td>
+                                    <td>
+                                        <div class="actions">
+                                            <button type="button" class="secondary-button" onclick="openDetails('${assignment.id}')">Submissions</button>
+                                            <button type="button" class="danger-button" onclick="deleteAssignment('${assignment.id}')">Delete</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function renderTable() {
+            const rows = getVisibleAssignments();
+            const markup = currentUser.role === 'student' ? renderStudentTable(rows) : renderFacultyTable(rows);
+            document.getElementById('tableContainer').innerHTML = markup;
+            renderStats();
+        }
+
+        function openAssignmentModal() {
+            document.getElementById('assignmentForm').reset();
+            const dueDate = new Date();
+            dueDate.setDate(dueDate.getDate() + 7);
+            dueDate.setMinutes(dueDate.getMinutes() - dueDate.getTimezoneOffset());
+            document.getElementById('assignmentDueDate').value = dueDate.toISOString().slice(0, 16);
+            document.getElementById('assignmentModal').classList.add('active');
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        function openSubmitModal(assignmentId) {
+            selectedAssignmentId = assignmentId;
+            const assignment = assignments.find(item => item.id === assignmentId);
+            document.getElementById('submitTitle').textContent = `Submit: ${assignment.title}`;
+            document.getElementById('submitForm').reset();
+            document.getElementById('submissionError').classList.remove('show');
+            document.getElementById('submitModal').classList.add('active');
+        }
+
+        function isAllowedFile(file) {
+            const extension = file.name.split('.').pop().toLowerCase();
+            return allowedExtensions.includes(extension) && (!file.type || allowedTypes.includes(file.type));
+        }
+
+        function readFileAsDataUrl(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => reject(new Error('The file could not be read.'));
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function showSubmissionError(message) {
+            const error = document.getElementById('submissionError');
+            error.textContent = message;
+            error.classList.add('show');
+        }
+
+        function openGradeModal(submissionId) {
+            selectedSubmissionId = submissionId;
+            const submission = submissions.find(item => item.id === submissionId);
+            const assignment = assignments.find(item => item.id === submission.assignmentId);
+            document.getElementById('gradeTitle').textContent = `Grade: ${assignment.title}`;
+            document.getElementById('gradeValue').value = submission.grade ?? '';
+            document.getElementById('gradeFeedback').value = submission.feedback || '';
+            document.getElementById('gradeModal').classList.add('active');
+        }
+
+        function filePreviewMarkup(submission) {
+            if (!submission) return '<p class="muted">No file has been submitted yet.</p>';
+            const safeName = escapeHtml(submission.fileName);
+            const download = `<p><a class="text-button" href="${submission.fileData}" download="${safeName}">Download ${safeName}</a></p>`;
+            if (submission.fileType.startsWith('image/')) {
+                return `${download}<img class="preview-image" src="${submission.fileData}" alt="${safeName}">`;
+            }
+            return `${download}<iframe class="preview-frame" src="${submission.fileData}" title="${safeName}"></iframe>`;
+        }
+
+        function openDetails(assignmentId) {
+            const assignment = assignments.find(item => item.id === assignmentId);
+            const content = document.getElementById('detailsContent');
+
+            if (currentUser.role === 'student') {
+                const submission = getStudentSubmission(assignmentId);
+                content.innerHTML = `
+                    <h2 class="modal-title">${escapeHtml(assignment.title)}</h2>
+                    <p><strong>Course:</strong> ${escapeHtml(assignment.course)} | <strong>Class:</strong> ${escapeHtml(assignment.className)}</p>
+                    <p><strong>Due:</strong> ${formatDate(assignment.dueDate)}</p>
+                    <p>${escapeHtml(assignment.description || 'No description')}</p>
+                    <hr>
+                    <p><strong>Status:</strong> ${badge(getStudentStatus(assignment))}</p>
+                    <p><strong>Submitted:</strong> ${submission ? formatDate(submission.submittedAt) : '-'}</p>
+                    <p><strong>Grade:</strong> ${submission && submission.grade !== null && submission.grade !== undefined ? `${submission.grade}%` : '-'}</p>
+                    <p><strong>Feedback:</strong> ${escapeHtml(submission && submission.feedback ? submission.feedback : 'No feedback yet')}</p>
+                    ${filePreviewMarkup(submission)}
+                    <div class="form-actions"><button type="button" class="secondary-button" onclick="closeModal('detailsModal')">Close</button></div>
+                `;
+            } else {
+                const classStudents = STUDENTS.filter(student => student.className === assignment.className);
+                const rows = classStudents.map(student => {
+                    const submission = getStudentSubmission(assignmentId, student.id);
+                    const status = submission
+                        ? (submission.grade !== null && submission.grade !== undefined ? 'graded' : submission.status)
+                        : (new Date() > new Date(assignment.dueDate) ? 'late' : 'pending');
+                    return `
+                        <tr>
+                            <td><strong>${escapeHtml(student.name)}</strong><p>${escapeHtml(student.id)}</p></td>
+                            <td>${badge(status)}</td>
+                            <td>${submission ? formatDate(submission.submittedAt) : '-'}</td>
+                            <td>${submission && submission.grade !== null && submission.grade !== undefined ? `${submission.grade}%` : '-'}</td>
+                            <td>
+                                <div class="actions">
+                                    ${submission ? `<button type="button" class="secondary-button" onclick="previewSubmission('${submission.id}')">View File</button>` : ''}
+                                    ${submission ? `<button type="button" class="primary-button" onclick="openGradeModal('${submission.id}')">Grade</button>` : ''}
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+
+                content.innerHTML = `
+                    <h2 class="modal-title">${escapeHtml(assignment.title)} Submissions</h2>
+                    <p><strong>${escapeHtml(assignment.course)}</strong> | ${escapeHtml(assignment.className)} | Due ${formatDate(assignment.dueDate)}</p>
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th>Status</th>
+                                    <th>Submitted</th>
+                                    <th>Grade</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                    <div class="form-actions"><button type="button" class="secondary-button" onclick="closeModal('detailsModal')">Close</button></div>
+                `;
+            }
+
+            document.getElementById('detailsModal').classList.add('active');
+        }
+
+        function previewSubmission(submissionId) {
+            const submission = submissions.find(item => item.id === submissionId);
+            const assignment = assignments.find(item => item.id === submission.assignmentId);
+            const student = STUDENTS.find(item => item.id === submission.studentId);
+            document.getElementById('detailsContent').innerHTML = `
+                <h2 class="modal-title">${escapeHtml(student.name)} - ${escapeHtml(assignment.title)}</h2>
+                <p><strong>Submitted:</strong> ${formatDate(submission.submittedAt)}</p>
+                <p><strong>Comments:</strong> ${escapeHtml(submission.comments || 'No comments')}</p>
+                <p><strong>Grade:</strong> ${submission.grade !== null && submission.grade !== undefined ? `${submission.grade}%` : '-'}</p>
+                <p><strong>Feedback:</strong> ${escapeHtml(submission.feedback || 'No feedback yet')}</p>
+                ${filePreviewMarkup(submission)}
+                <div class="form-actions">
+                    <button type="button" class="primary-button" onclick="openGradeModal('${submission.id}')">Grade</button>
+                    <button type="button" class="secondary-button" onclick="openDetails('${assignment.id}')">Back</button>
+                </div>
+            `;
+            document.getElementById('detailsModal').classList.add('active');
+        }
+
+        function deleteAssignment(assignmentId) {
+            if (!confirm('Delete this assignment and all related submissions?')) return;
+            assignments = assignments.filter(item => item.id !== assignmentId);
+            submissions = submissions.filter(item => item.assignmentId !== assignmentId);
+            saveData();
+            renderTable();
+        }
+
+        document.getElementById('assignmentForm').addEventListener('submit', event => {
+            event.preventDefault();
+            assignments.push({
+                id: generateId('A'),
+                title: document.getElementById('assignmentTitle').value.trim(),
+                course: document.getElementById('assignmentCourse').value.trim(),
+                className: document.getElementById('assignmentClass').value,
+                dueDate: document.getElementById('assignmentDueDate').value,
+                description: document.getElementById('assignmentDescription').value.trim(),
+                createdBy: currentUser.id,
+                createdAt: new Date().toISOString()
+            });
+            saveData();
+            closeModal('assignmentModal');
+            renderTable();
+        });
+
+        document.getElementById('submitForm').addEventListener('submit', async event => {
+            event.preventDefault();
+            const file = document.getElementById('submissionFile').files[0];
+            if (!file) {
+                showSubmissionError('Choose a PDF, JPG, or PNG file before submitting.');
+                return;
+            }
+            if (!isAllowedFile(file)) {
+                showSubmissionError('Invalid file type. Upload only PDF, JPG, JPEG, or PNG files.');
+                return;
+            }
+
+            const assignment = assignments.find(item => item.id === selectedAssignmentId);
+            const fileData = await readFileAsDataUrl(file);
+            const submittedAt = new Date().toISOString();
+            const existing = getStudentSubmission(selectedAssignmentId);
+            const payload = {
+                id: existing ? existing.id : generateId('S'),
+                assignmentId: selectedAssignmentId,
+                studentId: currentUser.id,
+                studentName: currentUser.name,
+                className: currentUser.className,
+                submittedAt,
+                status: new Date(submittedAt) > new Date(assignment.dueDate) ? 'late' : 'submitted',
+                comments: document.getElementById('submissionComments').value.trim(),
+                fileName: file.name,
+                fileType: file.type || `application/${file.name.split('.').pop().toLowerCase()}`,
+                fileSize: file.size,
+                fileData,
+                grade: null,
+                feedback: ''
+            };
+
+            submissions = existing
+                ? submissions.map(item => item.id === existing.id ? payload : item)
+                : [...submissions, payload];
+            saveData();
+            closeModal('submitModal');
+            renderTable();
+            alert('Assignment submitted successfully.');
+        });
+
+        document.getElementById('gradeForm').addEventListener('submit', event => {
+            event.preventDefault();
+            const grade = Number(document.getElementById('gradeValue').value);
+            if (Number.isNaN(grade) || grade < 0 || grade > 100) return;
+
+            submissions = submissions.map(item => item.id === selectedSubmissionId
+                ? {
+                    ...item,
+                    grade,
+                    feedback: document.getElementById('gradeFeedback').value.trim(),
+                    gradedBy: currentUser.id,
+                    gradedAt: new Date().toISOString()
+                }
+                : item
+            );
+            saveData();
+            closeModal('gradeModal');
+            closeModal('detailsModal');
+            renderTable();
+            alert('Grade saved successfully.');
+        });
+
+        document.getElementById('searchBox').addEventListener('input', renderTable);
+        document.getElementById('statusFilter').addEventListener('change', renderTable);
+        document.getElementById('classFilter').addEventListener('change', renderTable);
+
+        document.querySelectorAll('.modal').forEach(modal => {
+            modal.addEventListener('click', event => {
+                if (event.target === modal) {
+                    modal.classList.remove('active');
+                }
+            });
+        });
+
+        if (requireLogin()) {
+            loadData();
+            populateClassFilter();
+            renderHeader();
+            renderTable();
+        }
+    </script>
+</body>
+</html>
